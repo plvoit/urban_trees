@@ -1,0 +1,11 @@
+name: urban_tree
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11  # or any version you prefer
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - notebook
