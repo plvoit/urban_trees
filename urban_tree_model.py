@@ -11,15 +11,15 @@ Additionally I implemented an irrigation function.
 
 Todo: Constant soil evaporation could be added as in Urban Tree Drought Stress (Tams et. al)
 '''
-from datetime import date
-
 import numpy as np
 import pandas as pd
 import random
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 
+#todo add pheno multiplier
 
+#Todo: add area/volume of tree and pit
+# add irrigation input option
 class Tree:
     def __init__(self, age):
 
@@ -36,39 +36,58 @@ class Tree:
             self.cpa = random.randint(2, 12)
 
         if age == "medium":
-            rooting_depth = np.arange(0.7, 1.25, 0.05).tolist()
+            rooting_depth = np.arange(0.7, 1.3, 0.05).tolist()
             self.rooting_depth = np.round(random.sample(rooting_depth, 1)[0], 2)
             self.cpa = random.randint(13, 50)
         if age == "old":
-            rooting_depth = np.arange(0.7, 1.25, 0.05).tolist()
+            rooting_depth = np.arange(1.2, 2.05, 0.05).tolist()
             self.rooting_depth = np.round(random.sample(rooting_depth, 1)[0], 2)
             self.cpa = random.randint(51, 100)
 
 
-        self.soil = random.sample(["med_sandy", "fine_sandy", "loamy_sand", "sandy_loam", "mineral_substrate"], 1)[0]
+        self.soil = random.sample(["med_sandy", "fine_sandy", "loamy_sand", "mineral_substrate"], 1)[0]
 
-        #get soil available water
+        #get soil available water old version
+        # if self.soil == "med_sandy":
+        #     self.saw = random.sample(np.arange(8, 12.2, 0.2).tolist(), 1)[0]
+        #
+        # elif self.soil == "fine_sandy":
+        #     self.saw = random.sample(np.arange(12, 15.2, 0.2).tolist(), 1)[0]
+        #
+        # elif self.soil == "loamy_sand":
+        #     self.saw = random.sample(np.arange(12, 16.2, 0.2).tolist(), 1)[0]
+        #
+        # elif self.soil == "sandy_loam":
+        #     self.saw = random.sample(np.arange(13, 17.2, 0.2).tolist(), 1)[0]
+        #
+        # elif self.soil == "mineral_substrate":
+        #     self.saw = random.sample(np.arange(21, 25, 1).tolist(), 1)[0]
+
+        #this is all in Vol% saw = Soil Available Water (water between pF 1.8-4.2), basically the nFK (nutzbare Feldkapazität)
+        #taken from Wessolek & Kluge Predicting Water Supply and Evapotranspiration of Street Trees Using Hydro-Pedo-Transfer Functions (HPTFs)
         if self.soil == "med_sandy":
             self.saw = random.sample(np.arange(8, 12.2, 0.2).tolist(), 1)[0]
+            self.pwp = 40 #mm
 
         elif self.soil == "fine_sandy":
             self.saw = random.sample(np.arange(12, 15.2, 0.2).tolist(), 1)[0]
+            self.pwp = 50 #mm
 
         elif self.soil == "loamy_sand":
             self.saw = random.sample(np.arange(12, 16.2, 0.2).tolist(), 1)[0]
-
-        elif self.soil == "sandy_loam":
-            self.saw = random.sample(np.arange(13, 17.2, 0.2).tolist(), 1)[0]
+            self.pwp = 60 #mm
 
         elif self.soil == "mineral_substrate":
             self.saw = random.sample(np.arange(21, 25, 1).tolist(), 1)[0]
+            self.pwp = 30 #mm
 
         self.kc = np.round(np.random.normal(0.6, 0.05, 1)[0], 2)
 
         self.k_ea = np.round(random.sample(np.arange(0.4,  0.62, 0.02).tolist(), 1)[0], 2)
         self.k_s = random.sample(np.arange(0.2, 0.42, 0.02).tolist(), 1)[0]
 
-        self.fc = np.round(self.saw * 10, 1)
+        #because we're going to milimeters, we're multiplying by 10
+        self.fc = np.round(self.saw * 10 + self.pwp, 1)
 
         self.surface_sealing = np.round(random.sample(np.arange(0, 1.05, 0.05).tolist(), 1)[0], 2)
 
@@ -91,13 +110,13 @@ def get_pheno_multiplier(doy):
     :return: np.array with pheno multipliers
     '''
 
-    if doy < 100:
+    if doy < 114:
         cp = 0
-    elif ((doy >= 100) and (doy < 114)):
+    elif ((doy >= 114) and (doy < 128)):
         cp = 0.5
-    elif ((doy >= 114) and (doy < 260)):
+    elif ((doy >= 128) and (doy < 274)):
         cp = 1
-    elif ((doy >= 260) and (doy < 274)):
+    elif ((doy >= 274) and (doy < 288)):
         cp = 0.5
     elif doy >= 274:
         cp = 0
@@ -194,15 +213,19 @@ def calc_infiltration(eff_rain, surface_runoff, c_inf=20.0):
     return infiltration
 
 def check_water_stress(swc, pwp, afc):
-    if swc < pwp + 0.5 * afc:
-        if swc < pwp + 0.3 * afc:
+
+    #scale swc back to 1m root depth to compare with PWP
+    swc = np.round(swc, 1)
+
+    if swc < pwp + 0.3 * afc:
+        if swc <= (pwp + 0.3): #add a little buffer of 0.3 mm
             return 2
         else:
             return 1
     else:
         return 0
 
-def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, doy, rain,
+def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, rain,
                            k_c=1.6, k_ea=0.5, k_s=0.3, fc=220, pwp=40,
                            crown_area=4, surface_sealing=0, sealing_class=2, rooting_depth=0.8, start_water_content=0.5,
                            cistern_volume=2000, cistern_catchment=20, loss_factor_in=0.5,
@@ -215,7 +238,7 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, doy, rain,
     :param et_pot: np.array, potential evaporation [mm]
     :infiltration: np.array, infiltration [mm] from calc_infiltration().
     :param k_c: crop coefficient for calculating the actual evapotranspiration according to FAO
-    :param datetime_array: np.array, dates of et_pot in rain in datetime fomrmat
+    :param datetime_array: np.array, dates of et_pot in rain in datetime format
     :param k_ea: E_ta reduction coefficient during water stress
     :param k_s: water stress_coefficient
     :param fc: field capacity [mm]: Often its expressed in  [m³/m³] which is Vol %. So if we assume
@@ -256,6 +279,7 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, doy, rain,
     cistern = np.zeros_like(et_pot)
     irrigation = np.zeros_like(et_pot)
 
+    doy = pd.to_datetime(datetime_array).dayofyear.to_numpy()
     beta_table = {1: (0.9, 0.95), 2: (0.8, 0.85), 3: (0.55, 0.6), 4: (0.2, 0.25)}
 
     pwp = pwp * rooting_depth
@@ -270,27 +294,26 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, doy, rain,
     sealed_area = crown_area * surface_sealing
     infiltration_area = crown_area * (1- surface_sealing)
 
-    # pre-compute the infiltration area, so we don't have to check at every iteration
-    # Precompute the beta array based on doy
-    # now we add the additional infiltration area according to the surface sealing class
-    winter_mask = (doy < 100) | (doy >= 274)
-    infiltration_area_array = np.where(winter_mask,
-                                       (beta_table[sealing_class][1] * sealed_area) + infiltration_area,  # Winter beta
-                                       (beta_table[sealing_class][0] * sealed_area) + infiltration_area)  # Summer beta
-
-
-    area_factor_array = crown_area / infiltration_area_array
     start_water_content *= rooting_depth
     swc[0] = start_water_content * fc
 
-    irrigated_today = False
+    water_stress_counter = 0 #we irrigate after 1 week water stress level 2
+    water_stress_days = np.zeros_like(et_pot)
+
+    infiltration_area_t = (beta_table[sealing_class][0] * sealed_area) + infiltration_area
+    area_factor_t = crown_area / infiltration_area_t
 
 
     for i in range(1, len(et_a)):
 
-        #reset the irrigation flag to make sure we just irrigate once a day
-        if doy[i] != doy[i-1]:
-            irrigated_today = False
+        #set the seasonally depending infiltration area
+        if doy[i] == 100:
+            infiltration_area_t = (beta_table[sealing_class][0] * sealed_area) + infiltration_area
+            area_factor_t = crown_area / infiltration_area_t
+
+        if doy[i] == 274:
+            infiltration_area_t = (beta_table[sealing_class][1] * sealed_area) + infiltration_area
+            area_factor_t = crown_area / infiltration_area_t
 
         #fill the cistern
         cistern_input = rain[i] * cistern_catchment * (1-loss_factor_in)
@@ -303,31 +326,34 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, doy, rain,
 
         #okay first we calculate et_a with the soil water content from the timestep before, then we update the soil water content
         #here its a chicken egg situation, I take the one from before.
-        if swc[i-1] - pwp <= 0:
-            #No water available for Et
-            et_a[i] = 0
-            #water_stress[i] = 2
 
-        elif swc[i-1] < (pwp + k_s * afc):
-            # water stress situation
-            et_ax = (c_p * k_c * et_pot[i] * k_ea) / area_factor_array[i]
+        #if there are leaves, then there is (evapo)transpiration
+        if c_p > 0:
+            if swc[i-1] - pwp <= 0:
+                #No water available for Et
+                et_a[i] = 0
 
-            if et_ax > swc[i-1] - pwp:
-                et_a[i] = (swc[i-1] - pwp) / area_factor_array[i]
+            elif swc[i-1] < (pwp + k_s * afc):
+                # water stress situation
+                et_ax = (c_p * k_c * et_pot[i] * k_ea) / area_factor_t
+
+                if et_ax > swc[i-1] - pwp:
+                    et_a[i] = (swc[i-1] - pwp) / area_factor_t
+                else:
+                    et_a[i] = et_ax
+
             else:
-                et_a[i] = et_ax
+                #this is the "no-water-stress" situation
+                et_ax = (c_p * k_c * et_pot[i]) / area_factor_t
+
+                #just to make sure that we don't go over the PWP
+                if et_ax > swc[i-1] - pwp:
+                    et_a[i] =(swc[i-1] - pwp) / area_factor_t
+                else:
+                    et_a[i] = et_ax
 
         else:
-            #this is the "no-water-stress" situation
-            et_ax = (c_p * k_c * et_pot[i]) / area_factor_array[i]
-
-            #just to make sure that we don't go over the PWP
-            if et_ax > swc[i-1] - pwp:
-                et_a[i] =(swc[i-1] - pwp) / area_factor_array[i]
-                #water_stress[i] = 1
-            else:
-                et_a[i] = et_ax
-                #water_stress[i] = 0
+            et_a[i] = 0
 
         #update field capacity
         delta_swc = infiltration[i] - et_a[i]
@@ -339,32 +365,60 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, doy, rain,
         else:
             swc[i] = np.max([pwp, delta_swc + swc[i-1]])
 
-
         water_stress[i] = check_water_stress(swc[i], pwp, afc)
 
 
+        if water_stress[i] == 2:
+            water_stress_counter += 1
+        else:
+            water_stress_counter = 0
+
+
         #irrigation
+        #irrigate if we have since one week water stress level 2
+        if irrigation_rate > 0:
+            if ((water_stress[i] == 2) and (water_stress_counter >= 24 * 7)):
 
-        if ((water_stress[i] == 2) and not (irrigated_today)):
+                if cistern[i] >= irrigation_rate:
+                    swc[i] = swc[i] + (irrigation_rate * (1 - loss_factor_out)) / infiltration_area_t
+                    water_stress[i] = check_water_stress(swc[i], pwp, afc)
+                    irrigation[i] = irrigation_rate * (1 - loss_factor_out)
+                    cistern[i] = cistern[i] - irrigation_rate
 
-            if cistern[i] >= irrigation_rate:
-                swc[i] = swc[i] + (irrigation_rate * (1 - loss_factor_out)) / infiltration_area_array[i]
-                water_stress[i] = check_water_stress(swc[i], pwp, afc)
-                irrigation[i] = irrigation_rate * (1 - loss_factor_out)
-                cistern[i] = cistern[i] - irrigation_rate
-                irrigated_today = True
+                    if water_stress[i] == 2:
+                        water_stress_counter += 1
+                    else:
+                        water_stress_counter = 0
 
-            else:
-                swc[i] = swc[i] + (cistern[i] * (1 - loss_factor_out)) / infiltration_area_array[i]
-                water_stress[i] = check_water_stress(swc[i], pwp, afc)
-                irrigation[i] = cistern[i] * (1 - loss_factor_out)
-                cistern[i] = 0
-                irrigated_today = True
+
+                else:
+                    swc[i] = swc[i] + (cistern[i] * (1 - loss_factor_out)) / infiltration_area_t
+                    water_stress[i] = check_water_stress(swc[i], pwp, afc)
+                    irrigation[i] = cistern[i] * (1 - loss_factor_out)
+                    cistern[i] = 0
+
+                    if water_stress[i] == 2:
+                        water_stress_counter += 1
+                    else:
+                        water_stress_counter = 0
+
+                if water_stress_counter >= (24 * 7):
+                    water_stress_days[i] = 1
+
+        else:
+            if water_stress_counter >= (24 * 7):
+                water_stress_days[i] = 1
+
+        #substract constant soil evaporation of 0.3mm like in Tams et. al "Urban Tree Drought Stress"
+        swc[i] = np.max([pwp, swc[i]-(0.3/24)])
+
+
+
 
     #The soil water content is now scaled to the rooting depth, so it needs to be divided again by it
     swc = np.round((swc / rooting_depth), 1)
 
-    return et_a, swc, percolation, water_stress, cistern, irrigation
+    return et_a, swc, percolation, water_stress_days, cistern, irrigation
 
 
 def urban_tree(et_pot, rain, datetime_array,
@@ -415,8 +469,8 @@ def urban_tree(et_pot, rain, datetime_array,
                                                                   l_max=l_max, c_i=c_i)
     surface_runoff = calc_surface_runoff(eff_rain, c_r=c_r, c_rt=c_rt)
     infiltration = calc_infiltration(eff_rain, surface_runoff, c_inf=c_inf)
-    et_a, swc, percolation, water_stress, cistern, irrigation = calc_et_actual_and_swc(et_pot * sky_view_factor,
-                                                                  infiltration, datetime_array, doy, rain,
+    et_a, swc, percolation, water_stress_days, cistern, irrigation = calc_et_actual_and_swc(et_pot * sky_view_factor,
+                                                                  infiltration, datetime_array, rain,
                                                                   k_c=k_c, k_ea=k_ea, k_s=k_s, fc=fc, pwp=pwp,
                                                                   crown_area=crown_area, surface_sealing=surface_sealing,
                                                                   sealing_class=sealing_class,
@@ -433,7 +487,7 @@ def urban_tree(et_pot, rain, datetime_array,
                        "eff_rain_mm": eff_rain,
                        "surface_runoff_mm": surface_runoff, "infiltration_mm": infiltration,
                        "et_a_mm": et_a, "et_pot_mm": et_pot, "soil_water_content_mm/m": swc, "percolation_mm": percolation,
-                       "water_stress": water_stress, "cistern_volume_mm": cistern, "irrigation_mm": irrigation})
+                       "water_stress": water_stress_days, "cistern_volume_mm": cistern, "irrigation_mm": irrigation})
 
     return df
 
@@ -486,7 +540,12 @@ def make_figure(plot_df):
         end = plot_df.date.iloc[i + 1]
         cat = plot_df.water_stress.iloc[i]
 
-        color = {0: 'green', 1: 'yellow', 2: 'red'}.get(cat, 'white')
+        if cat == 0:
+            color = 'green'
+        # elif 1 <= cat < 12:
+        #     color = 'yellow'
+        elif cat >= 12:
+            color = 'red'
 
         ax3.axvspan(start, end, facecolor=color, alpha=0.3)
 
@@ -494,12 +553,6 @@ def make_figure(plot_df):
     fig.tight_layout()
     plt.grid(True)
     plt.show()
-
-
-
-
-#
-
 
 
 
