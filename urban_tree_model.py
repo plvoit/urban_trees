@@ -39,6 +39,7 @@ class Tree:
             rooting_depth = np.arange(0.7, 1.3, 0.05).tolist()
             self.rooting_depth = np.round(random.sample(rooting_depth, 1)[0], 2)
             self.cpa = random.randint(13, 50)
+
         if age == "old":
             rooting_depth = np.arange(1.2, 2.05, 0.05).tolist()
             self.rooting_depth = np.round(random.sample(rooting_depth, 1)[0], 2)
@@ -226,7 +227,7 @@ def check_water_stress(swc, pwp, afc):
         return 0
 
 def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, rain,
-                           k_c=1.6, k_ea=0.5, k_s=0.3, fc=220, pwp=40,
+                           k_c=0.6, k_ea=0.5, k_s=0.3, fc=220, pwp=40,
                            crown_area=4, surface_sealing=0, sealing_class=2, rooting_depth=0.8, start_water_content=0.5,
                            cistern_volume=2000, cistern_catchment=20, loss_factor_in=0.5,
                            loss_factor_out=0.2, irrigation_rate=300):
@@ -294,7 +295,7 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, rain,
     sealed_area = crown_area * surface_sealing
     infiltration_area = crown_area * (1- surface_sealing)
 
-    start_water_content *= rooting_depth
+    #start_water_content *= rooting_depth Bug that Sophia found
     swc[0] = start_water_content * fc
 
     water_stress_counter = 0 #we irrigate after 1 week water stress level 2
@@ -323,6 +324,9 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, rain,
             cistern[i] = cistern_volume
 
         c_p = get_pheno_multiplier(doy[i])
+
+        if i == 41617:
+            print("Stop")
 
         #okay first we calculate et_a with the soil water content from the timestep before, then we update the soil water content
         #here its a chicken egg situation, I take the one from before.
@@ -413,10 +417,9 @@ def calc_et_actual_and_swc(et_pot, infiltration, datetime_array, rain,
         swc[i] = np.max([pwp, swc[i]-(0.3/24)])
 
 
-
-
     #The soil water content is now scaled to the rooting depth, so it needs to be divided again by it
     swc = np.round((swc / rooting_depth), 1)
+
 
     return et_a, swc, percolation, water_stress_days, cistern, irrigation
 
@@ -432,7 +435,7 @@ def urban_tree(et_pot, rain, datetime_array,
     Just a wrapper for the functions above. See description of the paramters in the individual functions
     :param et_pot: np.array of pot evaporation [mm]
     :param rain: np.array of rain [mm]
-    :param datetime_array: np.array, dates of et_pot in rain in datetime fomrmat
+    :param datetime_array: np.array, dates of et_pot in rain in datetime format
     :param l_max: maximum interception storage [mm]
     :param c_i: interception coefficient
     :param c_r: runoff coefficient
